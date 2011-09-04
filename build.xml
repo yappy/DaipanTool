@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ====================================================================== 
+     2011/08/24 12:52:41                                                        
+
+     DaipanTool    
+     th123 auto count
+
+     yappy                                                                
+     ====================================================================== -->
+<project name="DaipanTool" default="default">
+	<description>
+		th123 auto count
+    </description>
+
+	<property name="jar.name" value="daipan.jar" />
+	<property name="classpath" value="jna.jar;platform.jar" />
+	<property name="jar.classpath" value="jna.jar platform.jar" />
+
+	<target name="default" depends="dist" description="build">
+	</target>
+
+	<target name="rebuild" depends="clean,dist" description="rebuild">
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+		<delete file="${jar.name}" />
+	</target>
+
+	<target name="compile">
+		<mkdir dir="bin" />
+		<javac srcdir="src" destdir="bin" classpath="${classpath}" includeantruntime="false" />
+		<copy todir="bin">
+			<fileset dir="src">
+				<include name="*" />
+				<exclude name="*.java" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="jar" depends="compile">
+		<jar destfile="${jar.name}">
+			<fileset dir="bin">
+				<include name="*" />
+			</fileset>
+			<manifest>
+				<attribute name="Main-Class" value="Main" />
+				<attribute name="Class-Path" value="${jar.classpath}" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="dist" depends="jar" description="create package">
+		<mkdir dir="dist" />
+		<copy todir="dist">
+			<fileset dir=".">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+	</target>
+
+</project>
