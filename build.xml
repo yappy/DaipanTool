@@ -56,6 +56,7 @@
 		<copy todir="dist">
 			<fileset dir=".">
 				<include name="*.jar" />
+				<include name="readme.txt" />
 			</fileset>
 		</copy>
 	</target>

@@ -24,6 +24,7 @@ import javax.imageio.ImageIO;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -76,6 +77,9 @@ public class ViewFrame extends JFrame {
 		InputStream propIn = getClass().getResourceAsStream(
 				"default.properties");
 		prop.load(propIn);
+
+		final String TEXT = "注意: CPU戦やリプレイも記録してしまいます";
+		add(new JLabel(TEXT), BorderLayout.NORTH);
 
 		logListModel = new DefaultListModel<String>();
 		logArea = new JList<String>(logListModel);
