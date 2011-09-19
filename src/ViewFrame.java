@@ -18,18 +18,28 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.util.InputMismatchException;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Scanner;
+import java.util.TreeMap;
 
 import javax.imageio.ImageIO;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
 import javax.swing.Timer;
+import javax.swing.filechooser.FileFilter;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.Kernel32;
@@ -60,12 +70,13 @@ public class ViewFrame extends JFrame {
 	private Image iconImage;
 	JList<String> logArea;
 	private DefaultListModel<String> logListModel;
+	private JFileChooser fileChooser;
 
 	public ViewFrame() throws IOException {
 		super("勝敗カウンタ");
 		setDefaultCloseOperation(HIDE_ON_CLOSE);
 		setLocationByPlatform(true);
-		setSize(320, 240);
+		setSize(480, 320);
 
 		URL iconURL = getClass().getResource(ICON_FILE);
 		if (iconURL == null)
@@ -86,6 +97,12 @@ public class ViewFrame extends JFrame {
 		logArea.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		add(new JScrollPane(logArea), BorderLayout.CENTER);
 
+		fileChooser = new JFileChooser(".");
+		fileChooser.setMultiSelectionEnabled(true);
+		fileChooser.setAcceptAllFileFilterUsed(false);
+		FileFilter filter = new FileNameExtensionFilter("CSV file", "csv");
+		fileChooser.addChoosableFileFilter(filter);
+
 		JPanel panel = new JPanel(new FlowLayout());
 		JButton button;
 		button = new JButton("ログクリア");
@@ -93,6 +110,14 @@ public class ViewFrame extends JFrame {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				logListModel.clear();
+			}
+		});
+		panel.add(button);
+		button = new JButton("簡易解析");
+		button.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				analyze();
 			}
 		});
 		panel.add(button);
@@ -279,6 +304,84 @@ public class ViewFrame extends JFrame {
 
 	private int playerOffset(int player) {
 		return player == 0 ? 0x0c : 0x10;
+	}
+
+	private void analyze() {
+		class Result {
+			public int win1, win2, draw;
+		}
+
+		if (fileChooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION)
+			return;
+		File[] files = fileChooser.getSelectedFiles();
+		Map<String, Result> map = new TreeMap<String, Result>();
+		try {
+			for (File file : files) {
+				Scanner in = new Scanner(file, "JISAutoDetect");
+				while (in.hasNextLine()) {
+					String line = in.nextLine();
+					Scanner sin = new Scanner(line);
+					sin.useDelimiter(",");
+
+					sin.next(); // date
+					String prof1 = sin.next();
+					String char1 = sin.next();
+					int win1 = sin.nextInt();
+					String prof2 = sin.next();
+					String char2 = sin.next();
+					int win2 = sin.nextInt();
+
+					String key = prof1 + "@" + char1 + " - " + prof2 + "@"
+							+ char2;
+					Result result = map.get(key);
+					if (result == null)
+						result = new Result();
+					if (win1 == 2 && win2 == 2) {
+						result.draw++;
+					} else if (win1 == 2) {
+						result.win1++;
+					} else if (win2 == 2) {
+						result.win2++;
+					}
+					map.put(key, result);
+				}
+				in.close();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			JOptionPane.showMessageDialog(this, "I/O Error.", "Error",
+					JOptionPane.ERROR_MESSAGE);
+		} catch (InputMismatchException e) {
+			e.printStackTrace();
+			JOptionPane.showMessageDialog(this, "CSV Error.", "Error",
+					JOptionPane.ERROR_MESSAGE);
+		}
+		StringBuilder strb = new StringBuilder();
+		for (Map.Entry<String, Result> e : map.entrySet()) {
+			Result result = e.getValue();
+			strb.append(e.getKey() + ": ");
+			strb.append(result.win1 + "-" + result.win2);
+			strb.append("(" + result.draw + ")\n");
+		}
+		JDialog dialog = new JDialog(this, "Result", false);
+		dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+		dialog.setLocationByPlatform(true);
+		dialog.setSize(480, 320);
+		JTextArea textArea = new JTextArea(strb.toString());
+		textArea.setEditable(false);
+		textArea.selectAll();
+		dialog.add(new JScrollPane(textArea));
+		dialog.add(new JLabel("Ctrl+C: コピー"), BorderLayout.SOUTH);
+		// TODO Java7 localize problem?
+		System.err.println();
+		System.err.println("----------");
+		System.err.println(strb);
+		System.err.println("----------");
+		System.err.println();
+		dialog.add(new JLabel("コピーが文字化けする場合、stderr.txtを見てください。"),
+				BorderLayout.NORTH);
+
+		dialog.setVisible(true);
 	}
 
 	private PopupMenu createPopup() {
