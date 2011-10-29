@@ -60,8 +60,10 @@ public class ViewFrame extends JFrame {
 	private static final int INTERVAL = 500;
 
 	private Properties prop;
+	private AddressSet[] addrLib;
 
 	private boolean existing = false;
+	private AddressSet addrSet;
 	private int processId;
 	private String thDir;
 	private boolean prevRecorded = false;
@@ -72,7 +74,7 @@ public class ViewFrame extends JFrame {
 	private DefaultListModel<String> logListModel;
 	private JFileChooser fileChooser;
 
-	public ViewFrame() throws IOException {
+	public ViewFrame() throws IOException, AddressLoadException {
 		super("勝敗カウンタ");
 		setDefaultCloseOperation(HIDE_ON_CLOSE);
 		setLocationByPlatform(true);
@@ -88,6 +90,7 @@ public class ViewFrame extends JFrame {
 		InputStream propIn = getClass().getResourceAsStream(
 				"default.properties");
 		prop.load(propIn);
+		addrLib = AddressSet.loadAll(prop);
 
 		final String TEXT = "注意: CPU戦やリプレイも記録してしまいます";
 		add(new JLabel(TEXT), BorderLayout.NORTH);
@@ -179,14 +182,14 @@ public class ViewFrame extends JFrame {
 						0, processId);
 				if (hProcess == null)
 					throw new Win32APIException();
-				int scene = readInt(hProcess, SWRS_ADDR_SCENEID);
+				int scene = readInt(hProcess, addrSet.SWRS_ADDR_SCENEID);
 				if (scene == STATE_BATTLE) {
 					int win1p = playerWin(hProcess, 0);
 					int win2p = playerWin(hProcess, 1);
 					boolean finish = (win1p == 2 || win2p == 2);
 					if (finish && !prevRecorded) {
-						int char1 = readInt(hProcess, ADDR_LEFTCHARID);
-						int char2 = readInt(hProcess, ADDR_RIGHTCHARID);
+						int char1 = readInt(hProcess, addrSet.ADDR_LEFTCHARID);
+						int char2 = readInt(hProcess, addrSet.ADDR_RIGHTCHARID);
 						try {
 							record(win1p, win2p, char1, char2);
 						} catch (IOException e) {
@@ -204,25 +207,29 @@ public class ViewFrame extends JFrame {
 				}
 			}
 		} else {
-			HWND hwnd = User32.INSTANCE.FindWindow("th123_110", null);
-			if (hwnd != null) {
-				IntByReference pProcessId = new IntByReference();
-				User32Ex.GetWindowThreadProcessId(hwnd, pProcessId);
-				processId = pProcessId.getValue();
-				HANDLE hProcess = Kernel32Ex.OpenProcess(
-						Kernel32Ex.PROCESS_VM_READ
-								| Kernel32Ex.PROCESS_QUERY_INFORMATION, 0,
-						processId);
-				IntByReference phModule = new IntByReference();
-				PsapiEx.EnumProcessModules(hProcess, phModule.getPointer(), 4,
-						new IntByReference().getPointer());
-				char[] buf = new char[260];
-				int res = PsapiEx.GetModuleFileNameExW(hProcess,
-						phModule.getValue(), buf, buf.length);
-				thDir = new File(new String(buf, 0, res)).getParent();
-				Kernel32.INSTANCE.CloseHandle(hProcess);
-				existing = true;
-				log("find. dir: %s", thDir);
+			for (AddressSet as : addrLib) {
+				HWND hwnd = User32.INSTANCE.FindWindow(as.CLASS, null);
+				if (hwnd != null) {
+					IntByReference pProcessId = new IntByReference();
+					User32Ex.GetWindowThreadProcessId(hwnd, pProcessId);
+					processId = pProcessId.getValue();
+					HANDLE hProcess = Kernel32Ex.OpenProcess(
+							Kernel32Ex.PROCESS_VM_READ
+									| Kernel32Ex.PROCESS_QUERY_INFORMATION, 0,
+							processId);
+					IntByReference phModule = new IntByReference();
+					PsapiEx.EnumProcessModules(hProcess, phModule.getPointer(),
+							4, new IntByReference().getPointer());
+					char[] buf = new char[260];
+					int res = PsapiEx.GetModuleFileNameExW(hProcess,
+							phModule.getValue(), buf, buf.length);
+					thDir = new File(new String(buf, 0, res)).getParent();
+					Kernel32.INSTANCE.CloseHandle(hProcess);
+					existing = true;
+					addrSet = as;
+					log("find(%s). dir: %s", as.CLASS, thDir);
+					break;
+				}
 			}
 		}
 	}
@@ -294,7 +301,7 @@ public class ViewFrame extends JFrame {
 	private int charaOffset(HANDLE hProcess, int player) {
 		IntByReference battle = new IntByReference();
 		IntByReference character = new IntByReference();
-		Kernel32Ex.ReadProcessMemory(hProcess, SWRS_ADDR_PBATTLEMGR,
+		Kernel32Ex.ReadProcessMemory(hProcess, addrSet.SWRS_ADDR_PBATTLEMGR,
 				battle.getPointer(), 4, null);
 		Kernel32Ex.ReadProcessMemory(hProcess,
 				(battle.getValue() + playerOffset(player)),
@@ -424,20 +431,17 @@ public class ViewFrame extends JFrame {
 		return data.getValue();
 	}
 
-	public static final int STATE_INITIALIZING = 0, STATE_TITLE = 2,
+	@SuppressWarnings("unused")
+	private static final int STATE_INITIALIZING = 0, STATE_TITLE = 2,
 			STATE_CHARSEL = 3, STATE_BATTLE = 5, STATE_LOADING = 6,
 			STATE_NET_SERVER_CHARSEL = 8, STATE_NET_CLIENT_CHARSEL = 9,
 			STATE_NET_SERVER_LOADING = 10, STATE_NET_CLIENT_LOADING = 11,
 			STATE_NET_WATCH_LOADING = 12, STATE_NET_SERVER_BATTLE = 13,
 			STATE_NET_CLIENT_BATTLE = 14, STATE_NET_WATCH_BATTLE = 15,
 			STATE_STORY_ARCADE_CHARSEL = 16;
-	public static final int SWRS_ADDR_SCENEID = 0x0088D024;
-	public static final int SWRS_ADDR_PBATTLEMGR = 0x008855C4;
-	public static final int ADDR_LEFTCHARID = 0x00886CF0;
-	public static final int ADDR_RIGHTCHARID = 0x00886D10;
 
-	public static final String[] CHARACTER_STRING = { "霊夢", "魔理沙", "咲夜", "アリス",
-			"パチュリー", "妖夢", "レミリア", "幽々子", "紫", "萃香", "優曇華", "文", "小町", "衣玖",
-			"天子", "早苗", "チルノ", "美鈴", "空", "諏訪子" };
+	private static final String[] CHARACTER_STRING = { "霊夢", "魔理沙", "咲夜",
+			"アリス", "パチュリー", "妖夢", "レミリア", "幽々子", "紫", "萃香", "優曇華", "文", "小町",
+			"衣玖", "天子", "早苗", "チルノ", "美鈴", "空", "諏訪子" };
 
 }
